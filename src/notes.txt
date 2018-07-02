@@ -1,0 +1,12 @@
+Binarized 30x30 images
+
+Linear regression
+	22.967%
+
+1 layer
+	63.2677%
+
+2 layer
+	84.209%
+
+
