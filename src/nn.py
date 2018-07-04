@@ -1,66 +1,46 @@
 import torch
 from torch import nn
 from torch import optim
-from torch.nn.functional import relu
-from torch.nn.functional import leaky_relu
-from torch.nn.functional import dropout
 import torchvision
 import numpy as np
 from skimage.io import imread
 import sys
 import time
-
-class FeedForward(nn.Module):
-    def __init__(self, input_size):
-        super(FeedForward, self).__init__()
-        self.fc1 = nn.Linear(input_size, 100)
-        self.fc2 = nn.Linear(100, 100)
-        self.fc3 = nn.Linear(100, 100)
-        self.fc4 = nn.Linear(100, 10)
-        self.lsm = nn.LogSoftmax(dim=0)
-        self._init_weights_()
-
-    def forward(self, x):
-        x = relu(self.fc1(x))
-        x = relu(self.fc2(x))
-        x = relu(self.fc3(x))
-        x = self.fc4(x)
-        return self.lsm(x)
-    
-    def _init_weights_(self):
-        gain = nn.init.calculate_gain('relu')
-        #gain = 10
-        init_method = nn.init.xavier_normal_
-        bias_init_method = nn.init.constant_
-        init_method(self.fc1.weight.data, gain=gain)
-        init_method(self.fc2.weight.data, gain=gain)
-        init_method(self.fc3.weight.data, gain=gain)
-        init_method(self.fc4.weight.data, gain=gain)
-        bias_init_method(self.fc1.bias.data, 0)
-        bias_init_method(self.fc2.bias.data, 0)
-        bias_init_method(self.fc3.bias.data, 0)
-        bias_init_method(self.fc4.bias.data, 0)
+import PIL
+from NeuralNet import LeNet
 
 
 if __name__ == '__main__':
     
-    if len(sys.argv) < 2:
-        print('Usage: python3 nn.py dataset_directory')
+    if len(sys.argv) < 4:
+        print('Usage: python3 nn.py train_dir validation_dir test_dir')
+        sys.exit()
 
-    batch_size = 512
-    transform = torchvision.transforms.Compose([torchvision.transforms.Grayscale(), torchvision.transforms.ToTensor()])
-    dataset = torchvision.datasets.ImageFolder(sys.argv[1],transform=transform)
+    train_dataset_dir = sys.argv[1]
+    validation_dataset_dir = sys.argv[2]
+    test_dataset_dir = sys.argv[3]
+    batch_size = 4
+    transform = torchvision.transforms.Compose([torchvision.transforms.Grayscale(),
+                                                torchvision.transforms.RandomAffine(0.5, 
+                                                                                    translate=(0.1,0.1), 
+                                                                                    resample= PIL.Image.BILINEAR),
+                                                torchvision.transforms.ToTensor()])
+    dataset = torchvision.datasets.ImageFolder(train_dataset_dir, transform=transform)
+    validation_transform = torchvision.transforms.Compose([torchvision.transforms.Grayscale(), torchvision.transforms.ToTensor()])
+    validation_dataset = torchvision.datasets.ImageFolder(validation_dataset_dir, transform=transform)
     print(dataset.class_to_idx)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-    image_size = 30 * 30
-    net = FeedForward(image_size)
-    optimizer = optim.Adam(net.parameters(), lr=0.0001)
-    criterion = nn.NLLLoss()
+    validation_dataloader = torch.utils.data.DataLoader(validation_dataset, batch_size=1024, num_workers=4)
+    image_size = 50 * 50
+    net = LeNet()
+    optimizer = optim.Adam(net.parameters(), lr=0.001, weight_decay=0.0)
+    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.90)
+    criterion = nn.CrossEntropyLoss()
 
-    print(time.strftime('%Y-%m-%d %H:%M'))
     best_acc_seen = 0
     best_acc_seen_at = 0
     for epoch in range(1, 1000):
+        print(time.strftime('%Y-%m-%d %H:%M'))
         running_loss = 0.0
         img_count = 0
         correct = 0
@@ -68,7 +48,7 @@ if __name__ == '__main__':
             img_count += len(target)
             target = torch.tensor(target)
             optimizer.zero_grad()
-            img = img.reshape((-1, image_size)).to(torch.float32)
+            #img = img.reshape((-1, image_size)).to(torch.float32)
             pred = net.forward(img)
             loss = criterion(pred, target)
             running_loss += loss.item()
@@ -77,11 +57,40 @@ if __name__ == '__main__':
             _, predicted = torch.max(pred.data, 1)
             correct += (predicted == target).sum().item()
         accuracy = correct / img_count
-        print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, running_loss/img_count, accuracy))
-        print(time.strftime('%Y-%m-%d %H:%M'))
-        if accuracy > best_acc_seen:
+        print('Epoch: {}\nLoss: {:02f}\nTra Accuracy: {:02f}, Mistakes: {}'.format(epoch, running_loss/img_count, accuracy, img_count - correct))
+        scheduler.step()
+        net.eval()
+        img_count = 0
+        correct = 0
+        for img, target in validation_dataloader:
+            img_count += len(target)
+            target = torch.tensor(target)
+            pred = net.forward(img)
+            _, predicted = torch.max(pred.data, 1)
+            correct += (predicted == target).sum().item()
+        accuracy = correct / img_count
+        print('Val Accuracy: {:02f}, Mistake: {}, Best: {} seen at {}'.format(accuracy, img_count - correct, best_acc_seen, best_acc_seen_at))
+        if accuracy >= best_acc_seen:
             best_acc_seen = accuracy
             best_acc_seen_at = epoch
-        if epoch - best_acc_seen_at > 20:
+        if epoch - best_acc_seen_at > 30:
             print(best_acc_seen)
             break
+
+        net.train()
+
+    test_dataset = torchvision.datasets.ImageFolder(test_dataset_dir, transform=validation_transform)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1024, num_workers=4)
+    net.eval()
+    img_count = 0
+    correct = 0
+    for img, target in test_dataloader:
+        img_count += len(target)
+        target = torch.tensor(target)
+        pred = net.forward(img)
+        _, predicted = torch.max(pred.data, 1)
+        correct += (predicted == target).sum().item()
+    accuracy = correct / img_count
+    print('Tes Accuracy: {}'.format(accuracy))
+
+    torch.save(net.state_dict(), 'LeNet')
