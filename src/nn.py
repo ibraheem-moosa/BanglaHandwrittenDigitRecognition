@@ -14,6 +14,12 @@ if __name__ == '__main__':
     
     if len(sys.argv) < 4:
         print('Usage: python3 nn.py train_dir validation_dir test_dir')
+        print('Example: python3 nn.py data/A/BW_50x50/train data/A/BW_50x50/validation data/A/BW_50x50/test ')
+        print('Run this after prepare_dataset.py')
+        print('Validation accuracy is printed in each epoch.')
+        print('If it does not get better for 30 epochs, training stops')
+        print('We use LeNet which is defined in NeuralNet.py.')
+        print('Also training images are randomly rotated by 0.5 degree, randomly translated by 10% while training')
         sys.exit()
 
     train_dataset_dir = sys.argv[1]

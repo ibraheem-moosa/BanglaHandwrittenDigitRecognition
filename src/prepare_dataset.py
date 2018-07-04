@@ -32,6 +32,13 @@ if __name__ == '__main__':
     random.seed(42)
     if len(sys.argv) < 6:
         print('Usage: python3 prepare_dataset.py image_directory output_directory row_size col_size metadata [no_split]')
+        print('Example: python3 prepare_dataset data/A data/A/BW_50x50 50 50 training-a.csv')
+        print('This creates 3 directories train, test, validation inside BW_50x50.')
+        print('Proportion of train, test and validation is 10-10-80')
+        print('Each directory contain 10 directories, one for each digit.')
+        print('Inside these directories are the modified images')
+        print('Each image in the dataset is binarized by otsu threshold, cropped to bounding box and resized to row_size by col-size.')
+        print('When no_split is specified dataset is not split to train test and validation.')
         sys.exit()
 
     if len(sys.argv) == 7:
